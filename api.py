@@ -362,6 +362,129 @@ async def list_vector_store_files(vector_store_id: str, limit: int = 100):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al listar archivos: {str(e)}")
 
+@app.post("/api/vector-stores/{vector_store_id}/add-files")
+async def add_files_to_vector_store(vector_store_id: str):
+    """
+    Agregar archivos nuevos a un Vector Store existente.
+
+    Este endpoint:
+    1. Obtiene los file_ids actuales del Vector Store
+    2. Agrega los nuevos file_ids de archivos subidos
+    3. Crea un nuevo batch con TODOS los file_ids
+    4. Retorna el batch_id para monitoreo
+
+    Args:
+        vector_store_id: ID del vector store existente
+    """
+    if not state.client:
+        raise HTTPException(status_code=400, detail="API key no configurada")
+
+    if not state.uploaded_files:
+        raise HTTPException(status_code=400, detail="No hay archivos nuevos para agregar")
+
+    try:
+        # 1. Obtener file_ids existentes en el Vector Store
+        existing_file_ids = []
+        vs_files = state.client.vector_stores.files.list(
+            vector_store_id=vector_store_id,
+            limit=100
+        )
+
+        for item in vs_files.data:
+            existing_file_ids.append(item.id)
+
+        # 2. Obtener nuevos file_ids de archivos subidos
+        new_file_ids = [f["file_id"] for f in state.uploaded_files]
+
+        # 3. Combinar todos los file_ids (existentes + nuevos)
+        all_file_ids = existing_file_ids + new_file_ids
+
+        # 4. Crear batch con todos los file_ids
+        batch = state.client.vector_stores.file_batches.create(
+            vector_store_id=vector_store_id,
+            file_ids=all_file_ids
+        )
+
+        # 5. Actualizar estado
+        state.vector_store_id = vector_store_id
+
+        return {
+            "success": True,
+            "batch_id": batch.id,
+            "vector_store_id": vector_store_id,
+            "total_files": len(all_file_ids),
+            "existing_files": len(existing_file_ids),
+            "new_files": len(new_file_ids),
+            "message": f"Batch creado. Procesando {len(all_file_ids)} archivos..."
+        }
+
+    except Exception as e:
+        logger.exception("Error al agregar archivos a Vector Store %s", vector_store_id)
+        raise HTTPException(status_code=500, detail=f"Error al agregar archivos: {str(e)}")
+
+@app.get("/api/vector-stores/{vector_store_id}/batch/{batch_id}/status")
+async def get_batch_status(vector_store_id: str, batch_id: str):
+    """
+    Obtener el estado de un batch de indexación.
+
+    Args:
+        vector_store_id: ID del vector store
+        batch_id: ID del batch a consultar
+    """
+    if not state.client:
+        raise HTTPException(status_code=400, detail="API key no configurada")
+
+    try:
+        batch = state.client.vector_stores.file_batches.retrieve(
+            vector_store_id=vector_store_id,
+            batch_id=batch_id
+        )
+
+        file_counts = {
+            "completed": batch.file_counts.completed if batch.file_counts else 0,
+            "in_progress": batch.file_counts.in_progress if batch.file_counts else 0,
+            "failed": batch.file_counts.failed if batch.file_counts else 0,
+            "cancelled": batch.file_counts.cancelled if batch.file_counts else 0,
+            "total": batch.file_counts.total if batch.file_counts else 0
+        }
+
+        return {
+            "success": True,
+            "batch_id": batch.id,
+            "status": batch.status,
+            "file_counts": file_counts,
+            "is_complete": batch.status not in ("queued", "in_progress")
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener estado del batch: {str(e)}")
+
+@app.delete("/api/vector-stores/{vector_store_id}/files/{file_id}")
+async def delete_file_from_vector_store(vector_store_id: str, file_id: str):
+    """
+    Eliminar un archivo de un Vector Store.
+
+    Args:
+        vector_store_id: ID del vector store
+        file_id: ID del archivo a eliminar
+    """
+    if not state.client:
+        raise HTTPException(status_code=400, detail="API key no configurada")
+
+    try:
+        state.client.vector_stores.files.delete(
+            vector_store_id=vector_store_id,
+            file_id=file_id
+        )
+
+        return {
+            "success": True,
+            "message": f"Archivo {file_id} eliminado del Vector Store"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar archivo: {str(e)}")
+
 @app.get("/api/vector-stores/{vector_store_id}/files/{file_id}/content")
 async def get_file_content(vector_store_id: str, file_id: str):
     """
