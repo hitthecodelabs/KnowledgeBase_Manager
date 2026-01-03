@@ -7,15 +7,25 @@ Plataforma completa para gestionar Vector Stores con OpenAI. Incluye interfaz we
 ### Opción 1: Plataforma Web Completa (Recomendado)
 
 ```bash
-# 1. Instalar dependencias Python
+
+# 1. Instala el módulo venv 
+apt install python3-venv
+
+# 2. Crea el entorno virtual
+python3 -m venv venv
+
+# 3. Activa el entorno virtual
+source venv/bin/activate
+
+# 4. Instalar dependencias Python
 pip install -r requirements.txt
 
-# 2. En otra terminal, instalar dependencias del frontend
+# 5. En otra terminal, instalar dependencias del frontend
 cd frontend
 npm install
 cd ..
 
-# 3. Iniciar toda la plataforma (backend + frontend)
+# 6. Iniciar toda la plataforma (backend + frontend)
 ./start_platform.sh
 ```
 
