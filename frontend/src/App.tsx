@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import ConfigPanel from './components/ConfigPanel'
 import FileUploader from './components/FileUploader'
 import VectorStoreManager from './components/VectorStoreManager'
 import ChatInterface from './components/ChatInterface'
+import VectorStoreExplorer from './components/VectorStoreExplorer'
 
 function App() {
   const [apiConfigured, setApiConfigured] = useState(false)
@@ -36,6 +37,9 @@ function App() {
             {vectorStoreId && (
               <ChatInterface vectorStoreId={vectorStoreId} />
             )}
+
+            {/* Explorador de Vector Stores existentes */}
+            <VectorStoreExplorer />
           </>
         )}
       </div>
