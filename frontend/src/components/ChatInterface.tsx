@@ -7,16 +7,32 @@ interface Message {
   sources?: string[]
 }
 
-interface ChatInterfaceProps {
-  vectorStoreId: string
+interface VectorStore {
+  id: string
+  name: string
+  status: string
+  file_counts: {
+    completed: number
+    in_progress: number
+    failed: number
+  }
 }
 
-function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
+interface ChatInterfaceProps {
+  vectorStoreId?: string | null
+}
+
+function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Vector Store selection
+  const [vectorStores, setVectorStores] = useState<VectorStore[]>([])
+  const [selectedVS, setSelectedVS] = useState<string | null>(initialVectorStoreId || null)
+  const [loadingVS, setLoadingVS] = useState(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -26,9 +42,38 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
     scrollToBottom()
   }, [messages])
 
+  useEffect(() => {
+    loadVectorStores()
+  }, [])
+
+  useEffect(() => {
+    if (initialVectorStoreId && !selectedVS) {
+      setSelectedVS(initialVectorStoreId)
+    }
+  }, [initialVectorStoreId])
+
+  const loadVectorStores = async () => {
+    setLoadingVS(true)
+    try {
+      const response = await axios.get('/api/vector-stores')
+      if (response.data.success) {
+        setVectorStores(response.data.vector_stores)
+      }
+    } catch (err: any) {
+      console.error('Error loading vector stores:', err)
+    } finally {
+      setLoadingVS(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || loading) return
+
+    if (!selectedVS) {
+      setError('Selecciona un Vector Store primero')
+      return
+    }
 
     const userMessage: Message = {
       role: 'user',
@@ -43,7 +88,7 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
     try {
       const response = await axios.post('/api/query', {
         query: input,
-        vector_store_id: vectorStoreId,
+        vector_store_id: selectedVS,
         model: 'gpt-4.1'
       })
 
@@ -73,6 +118,46 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
       <h2>Chat - Consultas RAG</h2>
 
       {error && <div className="error">{error}</div>}
+
+      {/* Selector de Vector Store */}
+      <div className="input-group" style={{ marginBottom: '20px' }}>
+        <label htmlFor="vsSelector">Vector Store para Consultas</label>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <select
+            id="vsSelector"
+            value={selectedVS || ''}
+            onChange={(e) => setSelectedVS(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '12px',
+              border: '2px solid #e0e0e0',
+              borderRadius: '8px',
+              fontSize: '1rem'
+            }}
+            disabled={loadingVS}
+          >
+            <option value="">-- Selecciona un Vector Store --</option>
+            {vectorStores.map(vs => (
+              <option key={vs.id} value={vs.id}>
+                {vs.name} ({vs.file_counts.completed} archivos)
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={loadVectorStores}
+            className="btn btn-secondary"
+            disabled={loadingVS}
+            title="Refrescar lista"
+          >
+            🔄
+          </button>
+        </div>
+        {!selectedVS && (
+          <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+            Selecciona un Vector Store para hacer consultas sobre sus documentos
+          </small>
+        )}
+      </div>
 
       <div className="chat-container">
         <div className="messages">
@@ -116,13 +201,13 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Escribe tu pregunta..."
-              disabled={loading}
+              placeholder={selectedVS ? "Escribe tu pregunta..." : "Selecciona un Vector Store primero"}
+              disabled={loading || !selectedVS}
             />
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim() || !selectedVS}
             >
               {loading ? 'Enviando...' : 'Enviar'}
             </button>

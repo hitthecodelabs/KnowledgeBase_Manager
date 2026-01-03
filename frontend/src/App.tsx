@@ -34,9 +34,8 @@ function App() {
               />
             </div>
 
-            {vectorStoreId && (
-              <ChatInterface vectorStoreId={vectorStoreId} />
-            )}
+            {/* Chat Interface siempre visible con selector de Vector Store */}
+            <ChatInterface vectorStoreId={vectorStoreId} />
 
             {/* Explorador de Vector Stores existentes */}
             <VectorStoreExplorer />

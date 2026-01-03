@@ -154,7 +154,22 @@ function VectorStoreExplorer() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '20px', marginTop: '20px' }}>
         {/* Lista de Vector Stores */}
         <div>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '10px' }}>Vector Stores</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Vector Stores</h3>
+            <button
+              onClick={loadVectorStores}
+              className="btn btn-secondary"
+              disabled={loading}
+              title="Refrescar lista"
+              style={{
+                padding: '6px 12px',
+                fontSize: '1rem',
+                minWidth: 'auto'
+              }}
+            >
+              🔄
+            </button>
+          </div>
           <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
             {loading && !selectedVS && <div className="loading">Cargando...</div>}
             {vectorStores.map(vs => (
