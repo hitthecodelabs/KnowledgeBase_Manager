@@ -30,7 +30,11 @@ interface FileContent {
   size: number
 }
 
-function VectorStoreExplorer() {
+interface VectorStoreExplorerProps {
+  refreshTrigger?: number
+}
+
+function VectorStoreExplorer({ refreshTrigger }: VectorStoreExplorerProps) {
   const [vectorStores, setVectorStores] = useState<VectorStore[]>([])
   const [selectedVS, setSelectedVS] = useState<VectorStore | null>(null)
   const [files, setFiles] = useState<VSFile[]>([])
@@ -42,6 +46,18 @@ function VectorStoreExplorer() {
   useEffect(() => {
     loadVectorStores()
   }, [])
+
+  // Refresh when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      loadVectorStores()
+      // Also refresh files if a VS is selected
+      if (selectedVS) {
+        loadFiles(selectedVS.id)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTrigger])
 
   const loadVectorStores = async () => {
     setLoading(true)
@@ -58,15 +74,11 @@ function VectorStoreExplorer() {
     }
   }
 
-  const handleVSClick = async (vs: VectorStore) => {
-    setSelectedVS(vs)
-    setSelectedFile(null)
-    setFileContent(null)
+  const loadFiles = async (vsId: string) => {
     setLoading(true)
     setError('')
-
     try {
-      const response = await axios.get(`/api/vector-stores/${vs.id}/files`)
+      const response = await axios.get(`/api/vector-stores/${vsId}/files`)
       if (response.data.success) {
         setFiles(response.data.files)
       }
@@ -75,6 +87,13 @@ function VectorStoreExplorer() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleVSClick = async (vs: VectorStore) => {
+    setSelectedVS(vs)
+    setSelectedFile(null)
+    setFileContent(null)
+    await loadFiles(vs.id)
   }
 
   const handleFileClick = async (file: VSFile) => {

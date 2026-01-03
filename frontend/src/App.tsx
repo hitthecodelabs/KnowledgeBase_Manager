@@ -9,6 +9,13 @@ function App() {
   const [apiConfigured, setApiConfigured] = useState(false)
   const [vectorStoreId, setVectorStoreId] = useState<string | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([])
+  const [refreshExplorer, setRefreshExplorer] = useState(0)
+
+  const handleVectorStoreUpdated = (vsId: string) => {
+    setVectorStoreId(vsId)
+    // Trigger refresh in VectorStoreExplorer
+    setRefreshExplorer(prev => prev + 1)
+  }
 
   return (
     <div className="app">
@@ -30,15 +37,15 @@ function App() {
 
               <VectorStoreManager
                 uploadedFiles={uploadedFiles}
-                onVectorStoreCreated={(vsId) => setVectorStoreId(vsId)}
+                onVectorStoreCreated={handleVectorStoreUpdated}
               />
             </div>
 
+            {/* Explorador de Vector Stores existentes */}
+            <VectorStoreExplorer refreshTrigger={refreshExplorer} />
+
             {/* Chat Interface siempre visible con selector de Vector Store */}
             <ChatInterface vectorStoreId={vectorStoreId} />
-
-            {/* Explorador de Vector Stores existentes */}
-            <VectorStoreExplorer />
           </>
         )}
       </div>

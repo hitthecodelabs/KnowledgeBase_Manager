@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+from io import BytesIO
 import os
 import tempfile
 import shutil
@@ -161,20 +162,18 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
     try:
-        # Guardar archivo temporalmente
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
-            shutil.copyfileobj(file.file, tmp)
-            tmp_path = tmp.name
+        # Leer contenido del archivo
+        file_content = await file.read()
 
         # Subir a OpenAI con el nombre original del archivo
-        with open(tmp_path, "rb") as f:
-            uploaded_file = state.client.files.create(
-                file=(file.filename, f),  # Tupla (filename, file_object) preserva el nombre original
-                purpose="assistants"
-            )
+        # Usando BytesIO para crear un file-like object con el contenido
+        file_obj = BytesIO(file_content)
+        file_obj.name = file.filename  # Asignar nombre original
 
-        # Limpiar archivo temporal
-        os.unlink(tmp_path)
+        uploaded_file = state.client.files.create(
+            file=file_obj,
+            purpose="assistants"
+        )
 
         # Guardar info en estado
         file_info = {
