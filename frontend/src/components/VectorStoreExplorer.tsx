@@ -110,10 +110,22 @@ function VectorStoreExplorer() {
     try {
       await axios.delete(`/api/vector-stores/${selectedVS.id}/files/${file.id}`)
 
+      // Pequeño delay para que la API de OpenAI propague la eliminación
+      await new Promise(resolve => setTimeout(resolve, 500))
+
       // Refresh file list
       const response = await axios.get(`/api/vector-stores/${selectedVS.id}/files`)
       if (response.data.success) {
         setFiles(response.data.files)
+      }
+
+      // Reload vector stores list to update file counts
+      await loadVectorStores()
+
+      // Re-select the current vector store to get updated data
+      const updatedVS = vectorStores.find(vs => vs.id === selectedVS.id)
+      if (updatedVS) {
+        setSelectedVS(updatedVS)
       }
 
       // Clear selected file if it was deleted
@@ -123,11 +135,12 @@ function VectorStoreExplorer() {
       }
 
       // Show success message briefly
-      const successMsg = `Archivo "${file.filename}" eliminado`
+      const successMsg = `Archivo "${file.filename}" eliminado correctamente`
+      setError('') // Clear any previous errors
       alert(successMsg)
 
     } catch (err: any) {
-      setError('Error al eliminar archivo')
+      setError('Error al eliminar archivo: ' + (err.response?.data?.detail || err.message))
     } finally {
       setLoading(false)
     }

@@ -34,6 +34,20 @@ function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfacePro
   const [selectedVS, setSelectedVS] = useState<string | null>(initialVectorStoreId || null)
   const [loadingVS, setLoadingVS] = useState(false)
 
+  // Model selection
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-5-mini')
+
+  // Available models - from GPT-5 family and reasoning models
+  const availableModels = [
+    { id: 'gpt-5.2', name: 'GPT-5.2 (Más potente)', category: 'GPT-5' },
+    { id: 'gpt-5.1', name: 'GPT-5.1', category: 'GPT-5' },
+    { id: 'gpt-5', name: 'GPT-5', category: 'GPT-5' },
+    { id: 'gpt-5-mini', name: 'GPT-5 Mini (Recomendado)', category: 'GPT-5' },
+    { id: 'gpt-5-nano', name: 'GPT-5 Nano (Más rápido)', category: 'GPT-5' },
+    { id: 'gpt-4o', name: 'GPT-4o', category: 'GPT-4' },
+    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', category: 'GPT-4' },
+  ]
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -89,7 +103,7 @@ function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfacePro
       const response = await axios.post('/api/query', {
         query: input,
         vector_store_id: selectedVS,
-        model: 'gpt-4.1'
+        model: selectedModel
       })
 
       if (response.data.success) {
@@ -120,7 +134,7 @@ function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfacePro
       {error && <div className="error">{error}</div>}
 
       {/* Selector de Vector Store */}
-      <div className="input-group" style={{ marginBottom: '20px' }}>
+      <div className="input-group" style={{ marginBottom: '15px' }}>
         <label htmlFor="vsSelector">Vector Store para Consultas</label>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <select
@@ -157,6 +171,34 @@ function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfacePro
             Selecciona un Vector Store para hacer consultas sobre sus documentos
           </small>
         )}
+      </div>
+
+      {/* Selector de Modelo GPT */}
+      <div className="input-group" style={{ marginBottom: '20px' }}>
+        <label htmlFor="modelSelector">Modelo GPT</label>
+        <select
+          id="modelSelector"
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value)}
+          style={{
+            padding: '12px',
+            border: '2px solid #e0e0e0',
+            borderRadius: '8px',
+            fontSize: '1rem',
+            background: 'linear-gradient(135deg, #f8f9ff 0%, #fff 100%)'
+          }}
+          disabled={loading}
+        >
+          {availableModels.map(model => (
+            <option key={model.id} value={model.id}>
+              {model.name}
+            </option>
+          ))}
+        </select>
+        <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+          Modelo seleccionado: <strong>{selectedModel}</strong>
+          {selectedModel.startsWith('gpt-5') && ' ⚡️'}
+        </small>
       </div>
 
       <div className="chat-container">

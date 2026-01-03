@@ -81,7 +81,7 @@ class VectorStoreResponse(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     vector_store_id: Optional[str] = None
-    model: str = "gpt-4.1"
+    model: str = "gpt-5-mini"  # Default to gpt-5-mini for cost-effectiveness
 
 class QueryResponse(BaseModel):
     success: bool
@@ -166,10 +166,10 @@ async def upload_file(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, tmp)
             tmp_path = tmp.name
 
-        # Subir a OpenAI
+        # Subir a OpenAI con el nombre original del archivo
         with open(tmp_path, "rb") as f:
             uploaded_file = state.client.files.create(
-                file=f,
+                file=(file.filename, f),  # Tupla (filename, file_object) preserva el nombre original
                 purpose="assistants"
             )
 
@@ -342,15 +342,10 @@ async def list_vector_store_files(vector_store_id: str, limit: int = 100):
                     "created_at": file_meta.created_at
                 })
             except Exception as e:
-                # Si falla obtener metadatos, incluir info básica
-                files.append({
-                    "id": item.id,
-                    "status": item.status,
-                    "filename": "unknown",
-                    "purpose": "unknown",
-                    "bytes": 0,
-                    "created_at": 0
-                })
+                # Si falla obtener metadatos (archivo eliminado o error),
+                # omitir el archivo en lugar de mostrarlo como "unknown"
+                print(f"Warning: No se pudieron obtener metadatos para archivo {item.id}: {e}")
+                continue
 
         return {
             "success": True,
