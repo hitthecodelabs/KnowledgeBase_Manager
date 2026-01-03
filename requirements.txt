@@ -12,3 +12,8 @@ python-dotenv>=1.0.0
 
 # Typing extensions (para Python < 3.10)
 typing-extensions>=4.0.0
+
+# FastAPI para API REST
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
