@@ -78,12 +78,14 @@ function VectorStoreExplorer() {
   }
 
   const handleFileClick = async (file: VSFile) => {
+    if (!selectedVS) return
+
     setSelectedFile(file)
     setLoading(true)
     setError('')
 
     try {
-      const response = await axios.get(`/api/files/${file.id}/content`)
+      const response = await axios.get(`/api/vector-stores/${selectedVS.id}/files/${file.id}/content`)
       setFileContent(response.data)
     } catch (err: any) {
       setError('Error al cargar contenido del archivo')

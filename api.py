@@ -362,12 +362,13 @@ async def list_vector_store_files(vector_store_id: str, limit: int = 100):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al listar archivos: {str(e)}")
 
-@app.get("/api/files/{file_id}/content")
-async def get_file_content(file_id: str):
+@app.get("/api/vector-stores/{vector_store_id}/files/{file_id}/content")
+async def get_file_content(vector_store_id: str, file_id: str):
     """
-    Obtener el contenido de un archivo (solo para archivos de texto: .md, .txt).
+    Obtener el contenido de un archivo de un Vector Store (solo archivos de texto: .md, .txt).
 
     Args:
+        vector_store_id: ID del vector store
         file_id: ID del archivo
     """
     if not state.client:
@@ -389,9 +390,20 @@ async def get_file_content(file_id: str):
                 "content": None
             }
 
-        # Obtener contenido del archivo
-        file_content = state.client.files.content(file_id)
-        content_text = file_content.read().decode('utf-8')
+        # Obtener contenido del archivo desde el Vector Store
+        # Este es el método correcto para archivos con purpose="assistants"
+        page = state.client.vector_stores.files.content(
+            vector_store_id=vector_store_id,
+            file_id=file_id
+        )
+
+        # Extraer texto de todos los items
+        text_parts = []
+        for item in page.data:
+            if item.type == "text" and item.text:
+                text_parts.append(item.text)
+
+        content_text = "\n".join(text_parts)
 
         return {
             "success": True,
@@ -402,6 +414,7 @@ async def get_file_content(file_id: str):
         }
 
     except Exception as e:
+        logger.exception("Error al obtener contenido de archivo %s en VS %s", file_id, vector_store_id)
         raise HTTPException(status_code=500, detail=f"Error al obtener contenido: {str(e)}")
 
 # =============================================================================
