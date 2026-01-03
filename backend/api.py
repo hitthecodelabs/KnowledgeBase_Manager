@@ -22,7 +22,9 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
+
 import os
+import logging
 import tempfile
 import shutil
 from datetime import datetime
@@ -30,10 +32,18 @@ from datetime import datetime
 # Importar módulos existentes
 from openai import OpenAI
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+# Uvicorn usa estos loggers; este es el más útil para tracebacks
+logger = logging.getLogger("uvicorn.error")
+
 app = FastAPI(
     title="Vector Store Platform API",
     description="API para gestión de Vector Stores con OpenAI",
-    version="1.0.0"
+    version="1.0.0",
+    debug=True
 )
 
 # Configurar CORS para permitir requests desde el frontend
@@ -306,6 +316,115 @@ async def get_status(vector_store_id: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Vector Store no encontrado: {str(e)}")
 
+@app.get("/api/vector-stores/{vector_store_id}/files")
+async def list_vector_store_files(vector_store_id: str, limit: int = 100):
+    """
+    Listar archivos de un Vector Store específico.
+    Args:
+        vector_store_id: ID del vector store
+        limit: Número máximo de archivos a retornar (máx 100)
+    """
+    if not state.client:
+        raise HTTPException(status_code=400, detail="API key no configurada")
+
+    try:
+        # Limitar a máximo 100
+        limit = min(limit, 100)
+
+        # Obtener archivos del vector store
+        vs_files = state.client.vector_stores.files.list(
+            vector_store_id=vector_store_id,
+            limit=limit
+        )
+
+        files = []
+        for item in vs_files.data:
+            # Obtener metadatos del archivo
+            try:
+                file_meta = state.client.files.retrieve(item.id)
+                files.append({
+                    "id": item.id,
+                    "status": item.status,
+                    "filename": file_meta.filename,
+                    "purpose": file_meta.purpose,
+                    "bytes": file_meta.bytes,
+                    "created_at": file_meta.created_at
+                })
+            except Exception as e:
+                # Si falla obtener metadatos, incluir info básica
+                files.append({
+                    "id": item.id,
+                    "status": item.status,
+                    "filename": "unknown",
+                    "purpose": "unknown",
+                    "bytes": 0,
+                    "created_at": 0
+                })
+
+        return {
+            "success": True,
+            "vector_store_id": vector_store_id,
+            "files": files,
+            "total": len(files)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar archivos: {str(e)}")
+
+@app.get("/api/vector-stores/{vector_store_id}/files/{file_id}/content")
+async def get_file_content(vector_store_id: str, file_id: str):
+    """
+    Obtener el contenido de un archivo de un Vector Store (solo archivos de texto: .md, .txt).
+    Args:
+        vector_store_id: ID del vector store
+        file_id: ID del archivo
+    """
+    if not state.client:
+        raise HTTPException(status_code=400, detail="API key no configurada")
+
+    try:
+        # Obtener metadatos del archivo
+        file_meta = state.client.files.retrieve(file_id)
+
+        # Verificar si es archivo de texto
+        filename = file_meta.filename.lower()
+        is_text = filename.endswith(('.md', '.txt'))
+
+        if not is_text:
+            return {
+                "success": False,
+                "message": f"Archivo {file_meta.filename} no es de texto plano. Solo se soportan .md y .txt",
+                "filename": file_meta.filename,
+                "content": None
+            }
+
+        # Obtener contenido del archivo desde el Vector Store
+        # Este es el método correcto para archivos con purpose="assistants"
+        page = state.client.vector_stores.files.content(
+            vector_store_id=vector_store_id,
+            file_id=file_id
+        )
+
+        # Extraer texto de todos los items
+        text_parts = []
+        for item in page.data:
+            if item.type == "text" and item.text:
+                text_parts.append(item.text)
+
+        content_text = "\n".join(text_parts)
+
+        return {
+            "success": True,
+            "filename": file_meta.filename,
+            "file_id": file_id,
+            "content": content_text,
+            "size": file_meta.bytes
+        }
+
+    except Exception as e:
+        logger.exception("Error al obtener contenido de archivo %s en VS %s", file_id, vector_store_id)
+        raise HTTPException(status_code=500, detail=f"Error al obtener contenido: {str(e)}")
+    
 # =============================================================================
 # ENDPOINTS - CONSULTAS RAG
 # =============================================================================
@@ -451,4 +570,10 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, 
+                host="0.0.0.0", 
+                port=8000, 
+                # reload=True,          # hot reload en desarrollo
+                log_level="debug",    # logs verbose
+                access_log=True,      # logs de requests
+                )
