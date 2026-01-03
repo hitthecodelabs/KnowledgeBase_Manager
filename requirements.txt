@@ -1,0 +1,14 @@
+# requirements.txt
+# Dependencias para el proyecto de Knowledge Base con OpenAI
+
+# SDK oficial de OpenAI
+openai>=1.30.0
+
+# Cliente HTTP (para endpoints de búsqueda)
+httpx>=0.27.0
+
+# Variables de entorno (opcional pero recomendado)
+python-dotenv>=1.0.0
+
+# Typing extensions (para Python < 3.10)
+typing-extensions>=4.0.0
