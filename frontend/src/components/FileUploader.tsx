@@ -9,20 +9,18 @@ interface FileUploaderProps {
 function FileUploader({ onFilesUploaded, uploadedFiles }: FileUploaderProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
+  const uploadFiles = async (fileList: FileList) => {
     setLoading(true)
     setError('')
 
     try {
       const newFiles = []
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i]
 
         // Validar extensión
         if (!file.name.endsWith('.pdf') && !file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
@@ -55,6 +53,35 @@ function FileUploader({ onFilesUploaded, uploadedFiles }: FileUploaderProps) {
     }
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    await uploadFiles(files)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = e.dataTransfer.files
+    if (files && files.length > 0) {
+      await uploadFiles(files)
+    }
+  }
+
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes'
     const k = 1024
@@ -72,6 +99,15 @@ function FileUploader({ onFilesUploaded, uploadedFiles }: FileUploaderProps) {
       <div
         className="file-upload"
         onClick={() => fileInputRef.current?.click()}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        style={{
+          borderColor: isDragging ? '#764ba2' : '#667eea',
+          backgroundColor: isDragging ? '#f0f2ff' : '#f8f9ff',
+          transform: isDragging ? 'scale(1.02)' : 'scale(1)',
+          transition: 'all 0.3s'
+        }}
       >
         <input
           ref={fileInputRef}
@@ -95,7 +131,7 @@ function FileUploader({ onFilesUploaded, uploadedFiles }: FileUploaderProps) {
             <line x1="12" y1="3" x2="12" y2="15"></line>
           </svg>
           <p style={{ marginTop: '10px', fontWeight: 600 }}>
-            {loading ? 'Subiendo...' : 'Click para seleccionar archivos'}
+            {loading ? 'Subiendo...' : isDragging ? 'Suelta los archivos aquí' : 'Arrastra archivos o haz click'}
           </p>
           <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '5px' }}>
             Formatos: PDF, MD, TXT

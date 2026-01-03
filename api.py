@@ -306,6 +306,104 @@ async def get_status(vector_store_id: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Vector Store no encontrado: {str(e)}")
 
+@app.get("/api/vector-stores/{vector_store_id}/files")
+async def list_vector_store_files(vector_store_id: str, limit: int = 100):
+    """
+    Listar archivos de un Vector Store específico.
+
+    Args:
+        vector_store_id: ID del vector store
+        limit: Número máximo de archivos a retornar (máx 100)
+    """
+    if not state.client:
+        raise HTTPException(status_code=400, detail="API key no configurada")
+
+    try:
+        # Limitar a máximo 100
+        limit = min(limit, 100)
+
+        # Obtener archivos del vector store
+        vs_files = state.client.vector_stores.files.list(
+            vector_store_id=vector_store_id,
+            limit=limit
+        )
+
+        files = []
+        for item in vs_files.data:
+            # Obtener metadatos del archivo
+            try:
+                file_meta = state.client.files.retrieve(item.id)
+                files.append({
+                    "id": item.id,
+                    "status": item.status,
+                    "filename": file_meta.filename,
+                    "purpose": file_meta.purpose,
+                    "bytes": file_meta.bytes,
+                    "created_at": file_meta.created_at
+                })
+            except Exception as e:
+                # Si falla obtener metadatos, incluir info básica
+                files.append({
+                    "id": item.id,
+                    "status": item.status,
+                    "filename": "unknown",
+                    "purpose": "unknown",
+                    "bytes": 0,
+                    "created_at": 0
+                })
+
+        return {
+            "success": True,
+            "vector_store_id": vector_store_id,
+            "files": files,
+            "total": len(files)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar archivos: {str(e)}")
+
+@app.get("/api/files/{file_id}/content")
+async def get_file_content(file_id: str):
+    """
+    Obtener el contenido de un archivo (solo para archivos de texto: .md, .txt).
+
+    Args:
+        file_id: ID del archivo
+    """
+    if not state.client:
+        raise HTTPException(status_code=400, detail="API key no configurada")
+
+    try:
+        # Obtener metadatos del archivo
+        file_meta = state.client.files.retrieve(file_id)
+
+        # Verificar si es archivo de texto
+        filename = file_meta.filename.lower()
+        is_text = filename.endswith(('.md', '.txt'))
+
+        if not is_text:
+            return {
+                "success": False,
+                "message": f"Archivo {file_meta.filename} no es de texto plano. Solo se soportan .md y .txt",
+                "filename": file_meta.filename,
+                "content": None
+            }
+
+        # Obtener contenido del archivo
+        file_content = state.client.files.content(file_id)
+        content_text = file_content.read().decode('utf-8')
+
+        return {
+            "success": True,
+            "filename": file_meta.filename,
+            "file_id": file_id,
+            "content": content_text,
+            "size": file_meta.bytes
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener contenido: {str(e)}")
+
 # =============================================================================
 # ENDPOINTS - CONSULTAS RAG
 # =============================================================================
