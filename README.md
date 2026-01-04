@@ -105,7 +105,7 @@ KnowledgeBase_Manager/
 - ✅ Subida de archivos multipart
 - ✅ Creación de Vector Stores
 - ✅ Búsqueda vectorial
-- ✅ Consultas RAG con GPT-4+
+- ✅ Consultas RAG con GPT-5+
 - ✅ CORS configurado
 
 ### CLI
@@ -127,7 +127,7 @@ Ver [PLATFORM_README.md](PLATFORM_README.md) para:
 
 - Python 3.8+
 - Node.js 16+
-- OpenAI API Key (con acceso a GPT-4 o superior)
+- OpenAI API Key (con acceso a GPT-5 o superior)
 
 ## 📖 Uso de la Plataforma Web
 
