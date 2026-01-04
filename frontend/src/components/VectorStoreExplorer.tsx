@@ -31,7 +31,11 @@ interface FileContent {
   message?: string
 }
 
-function VectorStoreExplorer() {
+interface VectorStoreExplorerProps {
+  refreshTrigger?: number
+}
+
+function VectorStoreExplorer({ refreshTrigger }: VectorStoreExplorerProps) {
   const [vectorStores, setVectorStores] = useState<VectorStore[]>([])
   const [selectedVS, setSelectedVS] = useState<VectorStore | null>(null)
   const [files, setFiles] = useState<VSFile[]>([])
@@ -43,6 +47,18 @@ function VectorStoreExplorer() {
   useEffect(() => {
     loadVectorStores()
   }, [])
+
+  // Refresh when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      loadVectorStores()
+      // Also refresh files if a VS is selected
+      if (selectedVS) {
+        loadFiles(selectedVS.id)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTrigger])
 
   const loadVectorStores = async () => {
     setLoading(true)
@@ -59,15 +75,11 @@ function VectorStoreExplorer() {
     }
   }
 
-  const handleVSClick = async (vs: VectorStore) => {
-    setSelectedVS(vs)
-    setSelectedFile(null)
-    setFileContent(null)
+  const loadFiles = async (vsId: string) => {
     setLoading(true)
     setError('')
-
     try {
-      const response = await axios.get(`/api/vector-stores/${vs.id}/files`)
+      const response = await axios.get(`/api/vector-stores/${vsId}/files`)
       if (response.data.success) {
         setFiles(response.data.files)
       }
@@ -76,6 +88,13 @@ function VectorStoreExplorer() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleVSClick = async (vs: VectorStore) => {
+    setSelectedVS(vs)
+    setSelectedFile(null)
+    setFileContent(null)
+    await loadFiles(vs.id)
   }
 
   const handleFileClick = async (file: VSFile) => {
@@ -90,6 +109,58 @@ function VectorStoreExplorer() {
       setFileContent(response.data)
     } catch (err: any) {
       setError('Error al cargar contenido del archivo')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteFile = async (file: VSFile, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent file selection when clicking delete
+
+    if (!selectedVS) return
+
+    // Confirmación
+    if (!window.confirm(`¿Estás seguro de eliminar "${file.filename}"?`)) {
+      return
+    }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      await axios.delete(`/api/vector-stores/${selectedVS.id}/files/${file.id}`)
+
+      // Pequeño delay para que la API de OpenAI propague la eliminación
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      // Refresh file list
+      const response = await axios.get(`/api/vector-stores/${selectedVS.id}/files`)
+      if (response.data.success) {
+        setFiles(response.data.files)
+      }
+
+      // Reload vector stores list to update file counts
+      await loadVectorStores()
+
+      // Re-select the current vector store to get updated data
+      const updatedVS = vectorStores.find(vs => vs.id === selectedVS.id)
+      if (updatedVS) {
+        setSelectedVS(updatedVS)
+      }
+
+      // Clear selected file if it was deleted
+      if (selectedFile?.id === file.id) {
+        setSelectedFile(null)
+        setFileContent(null)
+      }
+
+      // Show success message briefly
+      const successMsg = `Archivo "${file.filename}" eliminado correctamente`
+      setError('') // Clear any previous errors
+      alert(successMsg)
+
+    } catch (err: any) {
+      setError('Error al eliminar archivo: ' + (err.response?.data?.detail || err.message))
     } finally {
       setLoading(false)
     }
@@ -116,7 +187,22 @@ function VectorStoreExplorer() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '20px', marginTop: '20px' }}>
         {/* Lista de Vector Stores */}
         <div>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '10px' }}>Vector Stores</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Vector Stores</h3>
+            <button
+              onClick={loadVectorStores}
+              className="btn btn-secondary"
+              disabled={loading}
+              title="Refrescar lista"
+              style={{
+                padding: '6px 12px',
+                fontSize: '1rem',
+                minWidth: 'auto'
+              }}
+            >
+              🔄
+            </button>
+          </div>
           <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
             {loading && !selectedVS && <div className="loading">Cargando...</div>}
             {vectorStores.map(vs => (
@@ -180,7 +266,10 @@ function VectorStoreExplorer() {
                   borderRadius: '8px',
                   marginBottom: '6px',
                   cursor: 'pointer',
-                  transition: 'all 0.2s'
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
                 }}
                 onMouseEnter={(e) => {
                   if (selectedFile?.id !== file.id) {
@@ -193,15 +282,56 @@ function VectorStoreExplorer() {
                   }
                 }}
               >
-                <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '3px' }}>
-                  {file.filename}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '3px' }}>
+                    {file.filename}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>
+                    {formatBytes(file.bytes)}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '2px' }}>
+                    {file.status}
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>
-                  {formatBytes(file.bytes)}
-                </div>
-                <div style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '2px' }}>
-                  {file.status}
-                </div>
+
+                {/* Botón de eliminar */}
+                <button
+                  onClick={(e) => handleDeleteFile(file, e)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '6px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(220, 53, 69, 0.1)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                  }}
+                  title="Eliminar archivo"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={selectedFile?.id === file.id ? 'white' : '#dc3545'}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                </button>
               </div>
             ))}
           </div>

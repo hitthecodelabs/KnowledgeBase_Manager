@@ -7,16 +7,44 @@ interface Message {
   sources?: string[]
 }
 
-interface ChatInterfaceProps {
-  vectorStoreId: string
+interface VectorStore {
+  id: string
+  name: string
+  status: string
+  file_counts: {
+    completed: number
+    in_progress: number
+    failed: number
+  }
 }
 
-function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
+interface ChatInterfaceProps {
+  vectorStoreId?: string | null
+}
+
+function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Vector Store selection
+  const [vectorStores, setVectorStores] = useState<VectorStore[]>([])
+  const [selectedVS, setSelectedVS] = useState<string | null>(initialVectorStoreId || null)
+  const [loadingVS, setLoadingVS] = useState(false)
+
+  // Model selection
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-5-mini')
+
+  // Available models - from GPT-5 family and reasoning models
+  const availableModels = [
+    { id: 'gpt-5.2', name: 'GPT-5.2 (Más potente)', category: 'GPT-5' },
+    { id: 'gpt-5.1', name: 'GPT-5.1', category: 'GPT-5' },
+    { id: 'gpt-5', name: 'GPT-5', category: 'GPT-5' },
+    { id: 'gpt-5-mini', name: 'GPT-5 Mini', category: 'GPT-5' },
+    { id: 'gpt-5-nano', name: 'GPT-5 Nano', category: 'GPT-5' },
+  ]
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -26,9 +54,38 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
     scrollToBottom()
   }, [messages])
 
+  useEffect(() => {
+    loadVectorStores()
+  }, [])
+
+  useEffect(() => {
+    if (initialVectorStoreId && !selectedVS) {
+      setSelectedVS(initialVectorStoreId)
+    }
+  }, [initialVectorStoreId])
+
+  const loadVectorStores = async () => {
+    setLoadingVS(true)
+    try {
+      const response = await axios.get('/api/vector-stores')
+      if (response.data.success) {
+        setVectorStores(response.data.vector_stores)
+      }
+    } catch (err: any) {
+      console.error('Error loading vector stores:', err)
+    } finally {
+      setLoadingVS(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || loading) return
+
+    if (!selectedVS) {
+      setError('Selecciona un Vector Store primero')
+      return
+    }
 
     const userMessage: Message = {
       role: 'user',
@@ -43,8 +100,7 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
     try {
       const response = await axios.post('/api/query', {
         query: input,
-        vector_store_id: vectorStoreId,
-        model: 'gpt-4.1'
+        vector_store_id: selectedVS,
       })
 
       if (response.data.success) {
@@ -73,6 +129,74 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
       <h2>Chat - Consultas RAG</h2>
 
       {error && <div className="error">{error}</div>}
+
+      {/* Selector de Vector Store */}
+      <div className="input-group" style={{ marginBottom: '15px' }}>
+        <label htmlFor="vsSelector">Vector Store para Consultas</label>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <select
+            id="vsSelector"
+            value={selectedVS || ''}
+            onChange={(e) => setSelectedVS(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '12px',
+              border: '2px solid #e0e0e0',
+              borderRadius: '8px',
+              fontSize: '1rem'
+            }}
+            disabled={loadingVS}
+          >
+            <option value="">-- Selecciona un Vector Store --</option>
+            {vectorStores.map(vs => (
+              <option key={vs.id} value={vs.id}>
+                {vs.name} ({vs.file_counts.completed} archivos)
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={loadVectorStores}
+            className="btn btn-secondary"
+            disabled={loadingVS}
+            title="Refrescar lista"
+          >
+            🔄
+          </button>
+        </div>
+        {!selectedVS && (
+          <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+            Selecciona un Vector Store para hacer consultas sobre sus documentos
+          </small>
+        )}
+      </div>
+
+      {/* Selector de Modelo GPT */}
+      <div className="input-group" style={{ marginBottom: '20px' }}>
+        <label htmlFor="modelSelector">Modelo GPT</label>
+        <select
+          id="modelSelector"
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value)}
+          style={{
+            padding: '12px',
+            border: '2px solid #e0e0e0',
+            borderRadius: '8px',
+            fontSize: '1rem',
+            background: 'linear-gradient(135deg, #f8f9ff 0%, #fff 100%)'
+          }}
+          disabled={loading}
+        >
+          {availableModels.map(model => (
+            <option key={model.id} value={model.id}>
+              {model.name}
+            </option>
+          ))}
+        </select>
+        <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+          Modelo seleccionado: <strong>{selectedModel}</strong>
+          {selectedModel.startsWith('gpt-5') && ' ⚡️'}
+        </small>
+      </div>
 
       <div className="chat-container">
         <div className="messages">
@@ -116,13 +240,13 @@ function ChatInterface({ vectorStoreId }: ChatInterfaceProps) {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Escribe tu pregunta..."
-              disabled={loading}
+              placeholder={selectedVS ? "Escribe tu pregunta..." : "Selecciona un Vector Store primero"}
+              disabled={loading || !selectedVS}
             />
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim() || !selectedVS}
             >
               {loading ? 'Enviando...' : 'Enviar'}
             </button>
