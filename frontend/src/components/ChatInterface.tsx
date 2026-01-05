@@ -35,17 +35,15 @@ function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfacePro
   const [loadingVS, setLoadingVS] = useState(false)
 
   // Model selection
-  const [selectedModel, setSelectedModel] = useState<string>('gpt-5-mini')
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-4o')
 
-  // Available models - from GPT-5 family and reasoning models
+  // Available models - Real OpenAI models
   const availableModels = [
-    { id: 'gpt-5.2', name: 'GPT-5.2 (Más potente)', category: 'GPT-5' },
-    { id: 'gpt-5.1', name: 'GPT-5.1', category: 'GPT-5' },
-    { id: 'gpt-5', name: 'GPT-5', category: 'GPT-5' },
-    { id: 'gpt-5-mini', name: 'GPT-5 Mini (Recomendado)', category: 'GPT-5' },
-    { id: 'gpt-5-nano', name: 'GPT-5 Nano (Más rápido)', category: 'GPT-5' },
-    { id: 'gpt-4o', name: 'GPT-4o', category: 'GPT-4' },
+    { id: 'gpt-4o', name: 'GPT-4o (Recomendado)', category: 'GPT-4' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Rápido y económico)', category: 'GPT-4' },
     { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', category: 'GPT-4' },
+    { id: 'gpt-4', name: 'GPT-4', category: 'GPT-4' },
+    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', category: 'GPT-3.5' },
   ]
 
   const scrollToBottom = () => {
@@ -197,7 +195,6 @@ function ChatInterface({ vectorStoreId: initialVectorStoreId }: ChatInterfacePro
         </select>
         <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
           Modelo seleccionado: <strong>{selectedModel}</strong>
-          {selectedModel.startsWith('gpt-5') && ' ⚡️'}
         </small>
       </div>
 

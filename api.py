@@ -82,7 +82,7 @@ class VectorStoreResponse(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     vector_store_id: Optional[str] = None
-    model: str = "gpt-5-mini"  # Default to gpt-5-mini for cost-effectiveness
+    model: str = "gpt-4o"  # Default to gpt-4o
 
 class QueryResponse(BaseModel):
     success: bool
@@ -541,13 +541,13 @@ async def get_file_content(vector_store_id: str, file_id: str):
 @app.post("/api/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
     """
-    Hacer una consulta al asistente RAG usando Assistants API.
+    Hacer una consulta RAG usando búsqueda directa en Vector Store.
 
     Body:
         {
             "query": "¿Cuál es la política de devoluciones?",
             "vector_store_id": "vs_XXX",  // opcional
-            "model": "gpt-5-mini"  // opcional
+            "model": "gpt-4o"  // opcional
         }
     """
     if not state.client:
@@ -563,104 +563,125 @@ async def query_rag(request: QueryRequest):
         )
 
     try:
-        # 1. Crear un Assistant con file_search habilitado y asociado al Vector Store
-        assistant = state.client.beta.assistants.create(
-            name="Knowledge Base Assistant",
-            instructions="""Eres un asistente útil que responde preguntas basándote en los documentos proporcionados.
-Usa la información de los documentos para dar respuestas precisas y detalladas.
-Si no encuentras la información específica en los documentos, indícalo claramente.""",
-            model=request.model,
-            tools=[{"type": "file_search"}],
-            tool_resources={
-                "file_search": {
-                    "vector_store_ids": [vs_id]
-                }
-            }
-        )
+        import httpx
 
-        # 2. Crear un Thread para la conversación
-        thread = state.client.beta.threads.create()
+        # 1. Búsqueda directa en Vector Store
+        search_url = f"https://api.openai.com/v1/vector_stores/{vs_id}/search"
+        headers = {
+            "Authorization": f"Bearer {state.api_key}",
+            "Content-Type": "application/json",
+            "OpenAI-Beta": "assistants=v2",
+        }
+        payload = {
+            "query": request.query,
+            "max_num_results": 20  # Obtener top 20 chunks más relevantes
+        }
 
-        # 3. Agregar el mensaje del usuario al Thread
-        message = state.client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=request.query
-        )
-
-        # 4. Ejecutar el Assistant en el Thread
-        run = state.client.beta.threads.runs.create(
-            thread_id=thread.id,
-            assistant_id=assistant.id
-        )
-
-        # 5. Esperar a que el run complete
-        import time
-        max_wait = 30  # segundos
-        elapsed = 0
-        while run.status in ["queued", "in_progress", "requires_action"]:
-            time.sleep(1)
-            elapsed += 1
-            if elapsed > max_wait:
-                raise HTTPException(status_code=504, detail="Timeout esperando respuesta del asistente")
-
-            run = state.client.beta.threads.runs.retrieve(
-                thread_id=thread.id,
-                run_id=run.id
+        async with httpx.AsyncClient() as http_client:
+            search_response = await http_client.post(
+                search_url,
+                headers=headers,
+                json=payload,
+                timeout=30.0
             )
+            search_response.raise_for_status()
+            search_data = search_response.json()
 
-        # 6. Verificar si completó exitosamente
-        if run.status != "completed":
-            raise HTTPException(
-                status_code=500,
-                detail=f"El asistente no completó correctamente. Estado: {run.status}"
-            )
+        # 2. Extraer texto de los hits
+        def extract_text_from_hit(hit):
+            """Extrae texto de un hit del vector store"""
+            parts = hit.get("content", []) or []
+            texts = []
+            for p in parts:
+                if not isinstance(p, dict):
+                    continue
+                # Caso A: {"text": "..."}
+                if isinstance(p.get("text"), str):
+                    texts.append(p["text"])
+                # Caso B: {"type":"text","text":{"value":"..."}}
+                elif isinstance(p.get("text"), dict) and isinstance(p["text"].get("value"), str):
+                    texts.append(p["text"]["value"])
+                # Caso C: {"type":"text","value":"..."}
+                elif p.get("type") == "text" and isinstance(p.get("value"), str):
+                    texts.append(p["value"])
+            return "\n".join(t.strip() for t in texts if t and t.strip()).strip()
 
-        # 7. Obtener los mensajes del Thread
-        messages = state.client.beta.threads.messages.list(
-            thread_id=thread.id,
-            order="desc",
-            limit=1
-        )
-
-        # 8. Extraer la respuesta del asistente
-        assistant_message = messages.data[0]
-        answer = ""
+        # 3. Construir contexto y extraer fuentes
+        chunks = []
         sources = []
+        file_id_to_name = {}
 
-        for content_block in assistant_message.content:
-            if content_block.type == "text":
-                answer += content_block.text.value
+        for i, hit in enumerate(search_data.get("data", [])[:10], start=1):  # Top 10 chunks
+            file_id = hit.get("file_id")
+            txt = extract_text_from_hit(hit)
 
-                # Extraer anotaciones (referencias a archivos)
-                if hasattr(content_block.text, 'annotations'):
-                    for annotation in content_block.text.annotations:
-                        if hasattr(annotation, 'file_citation'):
-                            file_id = annotation.file_citation.file_id
-                            try:
-                                file_info = state.client.files.retrieve(file_id)
-                                if file_info.filename not in sources:
-                                    sources.append(file_info.filename)
-                            except:
-                                pass
+            if txt:
+                chunks.append(f"[Chunk #{i}]\n{txt}")
 
-        # 9. Limpiar: eliminar el Assistant y Thread
-        try:
-            state.client.beta.assistants.delete(assistant.id)
-            state.client.beta.threads.delete(thread.id)
-        except:
-            pass  # Ignorar errores de limpieza
+                # Obtener filename si no lo tenemos
+                if file_id and file_id not in file_id_to_name:
+                    try:
+                        file_info = state.client.files.retrieve(file_id)
+                        file_id_to_name[file_id] = file_info.filename
+                        if file_info.filename not in sources:
+                            sources.append(file_info.filename)
+                    except:
+                        pass
 
-        # 10. Retornar respuesta
+        context = "\n\n---\n\n".join(chunks)
+        context = context[:8000]  # Limitar a 8000 caracteres
+
+        # 4. Si no hay contexto, responder directamente
+        if not context:
+            return QueryResponse(
+                success=True,
+                answer="No encontré información relevante en los documentos para responder a tu pregunta.",
+                sources=[],
+                context=""
+            )
+
+        # 5. Construir prompt y llamar al modelo
+        system_prompt = """Eres un asistente útil que responde preguntas basándote ÚNICAMENTE en el contexto proporcionado de la base de conocimiento.
+
+REGLAS:
+- Usa SOLO la información del contexto KB que se te proporciona
+- Si la información no está en el contexto, di claramente que no tienes esa información
+- Sé preciso, conciso y amable
+- Responde en el mismo idioma que la pregunta"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": f"CONTEXTO DE LA BASE DE CONOCIMIENTO:\n\n{context}"},
+            {"role": "user", "content": request.query}
+        ]
+
+        # 6. Generar respuesta
+        completion = state.client.chat.completions.create(
+            model=request.model,
+            messages=messages,
+            temperature=0.3,  # Baja temperatura para respuestas más precisas
+            max_tokens=500
+        )
+
+        answer = completion.choices[0].message.content
+
         return QueryResponse(
             success=True,
-            answer=answer if answer else "No pude generar una respuesta.",
+            answer=answer,
             sources=sources,
-            context="Usando Assistants API con file_search"
+            context=context[:500] + "..." if len(context) > 500 else context
         )
 
     except HTTPException:
         raise
+    except httpx.HTTPStatusError as e:
+        import traceback
+        error_detail = f"Error en búsqueda de Vector Store: {e.response.status_code} - {e.response.text}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en búsqueda: {e.response.status_code}"
+        )
     except Exception as e:
         import traceback
         error_detail = f"Error al procesar consulta: {str(e)}\n{traceback.format_exc()}"
