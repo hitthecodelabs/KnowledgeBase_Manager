@@ -45,41 +45,28 @@ The **Knowledge Base Management Platform** is an enterprise-grade, full-stack so
 
 ### High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Client Layer                             │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  React SPA (TypeScript + Vite)                           │   │
-│  │  - Drag & Drop File Upload    - Vector Store Explorer   │   │
-│  │  - Real-time Chat Interface   - Model Selection         │   │
-│  │  - Multi-tenancy Support      - Analytics Dashboard     │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │ HTTPS/REST
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Application Layer                           │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  FastAPI REST API (Python 3.8+)                          │   │
-│  │  ┌────────────────────────────────────────────────────┐  │   │
-│  │  │  Middleware: CORS, Auth, Logging, Rate Limiting   │  │   │
-│  │  └────────────────────────────────────────────────────┘  │   │
-│  │  ┌────────────────────────────────────────────────────┐  │   │
-│  │  │  Controllers:                                      │  │   │
-│  │  │  - Config      - Files       - Vector Stores      │  │   │
-│  │  │  - Batches     - Search      - RAG Query          │  │   │
-│  │  └────────────────────────────────────────────────────┘  │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │ OpenAI SDK / HTTPX
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      OpenAI Platform Layer                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  Files API   │  │ Vector Store │  │  Completions API     │  │
-│  │  Storage     │  │  Embedding   │  │  Advanced Reasoning  │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Client["Client Layer"]
+        React["<b>React SPA</b> (TypeScript + Vite)<br/>• Drag & Drop File Upload<br/>• Real-time Chat Interface<br/>• Multi-tenancy Support<br/>• Vector Store Explorer<br/>• Model Selection<br/>• Analytics Dashboard"]
+    end
+
+    subgraph App["Application Layer"]
+        subgraph FastAPI["FastAPI REST API (Python 3.8+)"]
+            Middleware["<b>Middleware</b><br/>CORS | Auth | Logging | Rate Limiting"]
+            Controllers["<b>Controllers</b><br/>Config | Files | Vector Stores<br/>Batches | Search | RAG Query"]
+        end
+    end
+
+    subgraph OpenAI["OpenAI Platform Layer"]
+        Files["<b>Files API</b><br/>Storage"]
+        VectorStore["<b>Vector Store</b><br/>Embedding"]
+        Completions["<b>Completions API</b><br/>Advanced Reasoning"]
+    end
+
+    Client -->|"HTTPS/REST"| App
+    Middleware --> Controllers
+    App -->|"OpenAI SDK / HTTPX"| OpenAI
 ```
 
 ### Component Architecture
