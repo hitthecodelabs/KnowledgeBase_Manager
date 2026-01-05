@@ -545,13 +545,12 @@ async def get_file_content(vector_store_id: str, file_id: str):
 @app.post("/api/query", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
     """
-    Hacer una consulta al asistente RAG.
-
+    Hacer una consulta RAG usando búsqueda directa en Vector Store.
     Body:
         {
             "query": "¿Cuál es la política de devoluciones?",
             "vector_store_id": "vs_XXX",  // opcional
-            "model": "gpt-4.1"  // opcional
+            "model": "gpt-5"  // opcional
         }
     """
     if not state.client:
@@ -559,7 +558,6 @@ async def query_rag(request: QueryRequest):
 
     # Determinar vector_store_id a usar
     vs_id = request.vector_store_id or state.vector_store_id
-
     if not vs_id:
         raise HTTPException(
             status_code=400,
@@ -567,74 +565,99 @@ async def query_rag(request: QueryRequest):
         )
 
     try:
-        # Realizar búsqueda en el vector store
-        # Usando el endpoint de búsqueda directa
         import httpx
 
-        # Construir headers
+        # 1. Búsqueda directa en Vector Store
+        search_url = f"https://api.openai.com/v1/vector_stores/{vs_id}/search"
         headers = {
             "Authorization": f"Bearer {state.api_key}",
             "Content-Type": "application/json",
-            "OpenAI-Beta": "assistants=v2"
+            "OpenAI-Beta": "assistants=v2",
+        }
+        payload = {
+            "query": request.query,
+            "max_num_results": 20  # Obtener top 20 chunks más relevantes
         }
 
-        # Endpoint de búsqueda
-        search_url = f"https://api.openai.com/v1/vector_stores/{vs_id}/search"
-
-        # Realizar búsqueda
-        async with httpx.AsyncClient() as client:
-            search_response = await client.post(
+        async with httpx.AsyncClient() as http_client:
+            search_response = await http_client.post(
                 search_url,
                 headers=headers,
-                json={"query": request.query, "max_results": 5},
-                timeout=30.0
+                json=payload,
+                timeout=60.0
             )
-
-        if search_response.status_code != 200:
-            # Fallback: usar asistente sin búsqueda previa
-            context = ""
-            sources = []
-        else:
+            search_response.raise_for_status()
             search_data = search_response.json()
 
-            # Extraer contexto
-            chunks = []
-            sources = []
+        # 2. Extraer texto de los hits
+        def extract_text_from_hit(hit):
+            """Extrae texto de un hit del vector store"""
+            parts = hit.get("content", []) or []
+            texts = []
+            for p in parts:
+                if not isinstance(p, dict):
+                    continue
+                # Caso A: {"text": "..."}
+                if isinstance(p.get("text"), str):
+                    texts.append(p["text"])
+                # Caso B: {"type":"text","text":{"value":"..."}}
+                elif isinstance(p.get("text"), dict) and isinstance(p["text"].get("value"), str):
+                    texts.append(p["text"]["value"])
+                # Caso C: {"type":"text","value":"..."}
+                elif p.get("type") == "text" and isinstance(p.get("value"), str):
+                    texts.append(p["value"])
+            return "\n".join(t.strip() for t in texts if t and t.strip()).strip()
 
-            for hit in search_data.get("data", [])[:5]:
-                content = hit.get("content", "")
-                if isinstance(content, list):
-                    for item in content:
-                        if item.get("type") == "text":
-                            chunks.append(item.get("text", {}).get("value", ""))
-                elif isinstance(content, str):
-                    chunks.append(content)
+        # 3. Construir contexto y extraer fuentes
+        chunks = []
+        sources = []
+        file_id_to_name = {}
 
-                # Extraer filename si existe
-                filename = hit.get("filename", "unknown")
-                if filename not in sources:
-                    sources.append(filename)
+        for i, hit in enumerate(search_data.get("data", [])[:10], start=1):  # Top 10 chunks
+            file_id = hit.get("file_id")
+            txt = extract_text_from_hit(hit)
 
-            context = "\n\n".join(chunks)
+            if txt:
+                chunks.append(f"[Chunk #{i}]\n{txt}")
 
-        # Construir prompt para GPT
-        system_prompt = """Eres un asistente útil que responde preguntas basándote ÚNICAMENTE en el contexto proporcionado.
-Si la información no está en el contexto, di "No tengo esa información en mi base de conocimiento."
-Sé conciso, preciso y amable."""
+                # Obtener filename si no lo tenemos
+                if file_id and file_id not in file_id_to_name:
+                    try:
+                        file_info = state.client.files.retrieve(file_id)
+                        file_id_to_name[file_id] = file_info.filename
+                        if file_info.filename not in sources:
+                            sources.append(file_info.filename)
+                    except:
+                        pass
+
+        context = "\n\n---\n\n".join(chunks)
+        context = context[:8000]  # Limitar a 8000 caracteres
+
+        # 4. Si no hay contexto, responder directamente
+        if not context:
+            return QueryResponse(
+                success=True,
+                answer="No encontré información relevante en los documentos para responder a tu pregunta.",
+                sources=[],
+                context=""
+            )
+
+        # 5. Construir prompt y llamar al modelo
+        system_prompt = """Eres un asistente útil que responde preguntas basándote ÚNICAMENTE en el contexto proporcionado de la base de conocimiento.
+
+REGLAS:
+- Usa SOLO la información del contexto KB que se te proporciona
+- Si la información no está en el contexto, di claramente que no tienes esa información
+- Sé preciso, conciso y amable
+- Responde en el mismo idioma que la pregunta"""
 
         messages = [
-            {"role": "system", "content": system_prompt}
+            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": f"CONTEXTO DE LA BASE DE CONOCIMIENTO:\n\n{context}"},
+            {"role": "user", "content": request.query}
         ]
 
-        if context:
-            messages.append({
-                "role": "system",
-                "content": f"CONTEXTO DE LA BASE DE CONOCIMIENTO:\n{context}"
-            })
-
-        messages.append({"role": "user", "content": request.query})
-
-        # Generar respuesta con GPT
+        # 6. Generar respuesta
         completion = state.client.chat.completions.create(
             model=request.model,
             messages=messages,
@@ -650,7 +673,20 @@ Sé conciso, preciso y amable."""
             context=context[:500] + "..." if len(context) > 500 else context
         )
 
+    except HTTPException:
+        raise
+    except httpx.HTTPStatusError as e:
+        import traceback
+        error_detail = f"Error en búsqueda de Vector Store: {e.response.status_code} - {e.response.text}\n{traceback.format_exc()}"
+        print(error_detail)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en búsqueda: {e.response.status_code}"
+        )
     except Exception as e:
+        import traceback
+        error_detail = f"Error al procesar consulta: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
         raise HTTPException(status_code=500, detail=f"Error al procesar consulta: {str(e)}")
 
 # =============================================================================
