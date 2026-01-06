@@ -736,6 +736,51 @@ flowchart TB
     OpenAI["☁️ OpenAI Platform<br/>(Auto-scaling Vector DB)"]
 ```
 
+```mermaid
+flowchart LR
+    subgraph Phase1["📥 INGESTION"]
+        A1[File Upload] --> A2[OpenAI Files API] --> A3[State Management]
+    end
+    
+    subgraph Phase2["🔍 INDEXING"]
+        B1[Vector Store Creation] --> B2[Batch Processing] --> B3[Verification]
+    end
+    
+    subgraph Phase3["💬 QUERY"]
+        C1[User Query] --> C2[Semantic Search] --> C3[Context Assembly] --> C4[RAG Completion] --> C5[Response]
+    end
+    
+    Phase1 --> Phase2 --> Phase3
+```
+
+```mermaid
+flowchart TD
+    subgraph Ingestion["📥 INGESTION PHASE"]
+        Upload["1️⃣ File Upload"]
+        Upload --> |Validate| OpenAIFiles["2️⃣ OpenAI Files API"]
+        OpenAIFiles --> |file_id| State["3️⃣ State Management"]
+    end
+    
+    subgraph Indexing["🔍 INDEXING PHASE"]
+        VectorStore["4️⃣ Vector Store Creation"]
+        VectorStore --> |vs_id| Batch["5️⃣ Batch Processing"]
+        Batch --> |Chunk + Embed| Verify["6️⃣ Verification"]
+    end
+    
+    subgraph Query["💬 QUERY PHASE"]
+        UserQ["7️⃣ User Query"]
+        UserQ --> Search["8️⃣ Semantic Search"]
+        Search --> |Top K chunks| Context["9️⃣ Context Assembly"]
+        Context --> RAG["🔟 RAG Completion"]
+        RAG --> Response["1️⃣1️⃣ Response Delivery"]
+    end
+    
+    State --> VectorStore
+    Verify --> UserQ
+    
+    Response --> |"Answer + Sources + Context"| Output["📤 Final Output"]
+```
+
 ### Optimization Strategies
 
 ```yaml
