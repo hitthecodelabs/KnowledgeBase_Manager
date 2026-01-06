@@ -188,103 +188,102 @@ Infrastructure:
 
 ### Document Lifecycle
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        INGESTION PHASE                               │
-└─────────────────────────────────────────────────────────────────────┘
-    │
-    ├─► [1] File Upload (Frontend)
-    │    └─► Validation: Extension, Size, Content-Type
-    │
-    ├─► [2] OpenAI Files API
-    │    └─► Storage: Encrypted at rest, geo-redundant
-    │    └─► Returns: file_id (e.g., file-abc123...)
-    │
-    └─► [3] State Management
-         └─► Track: file_id, filename, size, timestamp
+```mermaid
+flowchart TB
+    subgraph INGESTION["📥 INGESTION PHASE"]
+        direction TB
+        I1["[1] File Upload (Frontend)"]
+        I1a["└─ Validation: Extension, Size, Content-Type"]
+        I2["[2] OpenAI Files API"]
+        I2a["└─ Storage: Encrypted at rest, geo-redundant"]
+        I2b["└─ Returns: file_id (e.g., file-abc123...)"]
+        I3["[3] State Management"]
+        I3a["└─ Track: file_id, filename, size, timestamp"]
+    end
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                      INDEXING PHASE                                  │
-└─────────────────────────────────────────────────────────────────────┘
-    │
-    ├─► [4] Vector Store Creation
-    │    └─► Configuration: name, metadata, expiration
-    │    └─► Returns: vector_store_id (e.g., vs_xyz789...)
-    │
-    ├─► [5] Batch Processing
-    │    └─► Chunking: Intelligent text segmentation
-    │    └─► Embedding: Generate vector representations
-    │    └─► Indexing: Store in high-performance vector DB
-    │    └─► Status: in_progress → completed (5-300 seconds)
-    │
-    └─► [6] Verification
-         └─► Check: File counts, status, errors
+    subgraph INDEXING["🔍 INDEXING PHASE"]
+        direction TB
+        X1["[4] Vector Store Creation"]
+        X1a["└─ Configuration: name, metadata, expiration"]
+        X1b["└─ Returns: vector_store_id (e.g., vs_xyz789...)"]
+        X2["[5] Batch Processing"]
+        X2a["└─ Chunking: Intelligent text segmentation"]
+        X2b["└─ Embedding: Generate vector representations"]
+        X2c["└─ Indexing: Store in high-performance vector DB"]
+        X2d["└─ Status: in_progress → completed (5-300s)"]
+        X3["[6] Verification"]
+        X3a["└─ Check: File counts, status, errors"]
+    end
 
-┌─────────────────────────────────────────────────────────────────────┐
-│                       QUERY PHASE                                    │
-└─────────────────────────────────────────────────────────────────────┘
-    │
-    ├─► [7] User Query
-    │    └─► Input: Natural language question
-    │    └─► Vector Store: Selected by user
-    │
-    ├─► [8] Semantic Search
-    │    └─► Embedding: Convert query to vector
-    │    └─► Similarity: Cosine distance calculation
-    │    └─► Retrieval: Top K chunks (default: 10)
-    │    └─► Scoring: Relevance scores (0.0-1.0)
-    │
-    ├─► [9] Context Assembly
-    │    └─► Extraction: Pull text from chunks
-    │    └─► Formatting: Structure for LLM consumption
-    │    └─► Truncation: Respect token limits (8000 chars)
-    │
-    ├─► [10] RAG Completion
-    │     └─► System Prompt: Instructions + KB context
-    │     └─► Model: User-selected (GPT-5 family)
-    │     └─► Reasoning: High-effort mode enabled
-    │     └─► Generation: Contextually grounded response
-    │
-    └─► [11] Response Delivery
-         └─► Answer: Generated text
-         └─► Sources: File names and IDs
-         └─► Context: Preview of retrieved chunks
+    subgraph QUERY["💬 QUERY PHASE"]
+        direction TB
+        Q1["[7] User Query"]
+        Q1a["└─ Input: Natural language question"]
+        Q1b["└─ Vector Store: Selected by user"]
+        Q2["[8] Semantic Search"]
+        Q2a["└─ Embedding: Convert query to vector"]
+        Q2b["└─ Similarity: Cosine distance calculation"]
+        Q2c["└─ Retrieval: Top K chunks (default: 10)"]
+        Q2d["└─ Scoring: Relevance scores (0.0-1.0)"]
+        Q3["[9] Context Assembly"]
+        Q3a["└─ Extraction: Pull text from chunks"]
+        Q3b["└─ Formatting: Structure for LLM consumption"]
+        Q3c["└─ Truncation: Respect token limits (8000 chars)"]
+        Q4["[10] RAG Completion"]
+        Q4a["└─ System Prompt: Instructions + KB context"]
+        Q4b["└─ Model: User-selected (GPT-5 family)"]
+        Q4c["└─ Reasoning: High-effort mode enabled"]
+        Q4d["└─ Generation: Contextually grounded response"]
+        Q5["[11] Response Delivery"]
+        Q5a["└─ Answer: Generated text"]
+        Q5b["└─ Sources: File names and IDs"]
+        Q5c["└─ Context: Preview of retrieved chunks"]
+    end
+
+    INGESTION --> INDEXING --> QUERY
 ```
 
 ### Data Storage Architecture
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│                    OpenAI Platform Storage                     │
-├───────────────────────────────────────────────────────────────┤
-│                                                                │
-│  Files Storage (Encrypted S3-compatible)                      │
-│  ├─ file-abc123... (document.pdf)     [2.3 MB]               │
-│  ├─ file-def456... (manual.md)        [15 KB]                │
-│  └─ file-ghi789... (policy.txt)       [8 KB]                 │
-│                                                                │
-│  Vector Store Index (High-Performance Vector DB)              │
-│  ├─ vs_xyz789... (Knowledge Base A)                          │
-│  │   ├─ Embeddings: 15,234 vectors (1536-dim)               │
-│  │   ├─ Metadata: File mappings, chunk boundaries           │
-│  │   └─ Status: 127 files indexed, 0 failed                 │
-│  │                                                            │
-│  └─ vs_mno345... (Knowledge Base B)                          │
-│      ├─ Embeddings: 8,901 vectors (1536-dim)                │
-│      └─ Status: 89 files indexed, 2 in_progress             │
-│                                                                │
-└───────────────────────────────────────────────────────────────┘
-         │                              │
-         │ SDK/API                      │ SDK/API
-         ▼                              ▼
-┌─────────────────────┐       ┌─────────────────────┐
-│  Backend AppState   │       │  Frontend State     │
-├─────────────────────┤       ├─────────────────────┤
-│ - api_key           │       │ - apiConfigured     │
-│ - client            │       │ - vectorStoreId     │
-│ - vector_store_id   │       │ - uploadedFiles     │
-│ - uploaded_files[]  │       │ - messages[]        │
-└─────────────────────┘       └─────────────────────┘
+```mermaid
+flowchart TB
+    subgraph OpenAI["☁️ OpenAI Platform Storage"]
+        subgraph Files["📁 Files Storage (Encrypted S3-compatible)"]
+            F1["file-abc123... (document.pdf) [2.3 MB]"]
+            F2["file-def456... (manual.md) [15 KB]"]
+            F3["file-ghi789... (policy.txt) [8 KB]"]
+        end
+        
+        subgraph VectorDB["🔢 Vector Store Index (High-Performance Vector DB)"]
+            subgraph VS1["vs_xyz789... (Knowledge Base A)"]
+                VS1a["Embeddings: 15,234 vectors (1536-dim)"]
+                VS1b["Metadata: File mappings, chunk boundaries"]
+                VS1c["Status: 127 files indexed, 0 failed"]
+            end
+            
+            subgraph VS2["vs_mno345... (Knowledge Base B)"]
+                VS2a["Embeddings: 8,901 vectors (1536-dim)"]
+                VS2b["Status: 89 files indexed, 2 in_progress"]
+            end
+        end
+    end
+
+    OpenAI -->|"SDK/API"| Backend
+    OpenAI -->|"SDK/API"| Frontend
+
+    subgraph Backend["🖥️ Backend AppState"]
+        B1["api_key"]
+        B2["client"]
+        B3["vector_store_id"]
+        B4["uploaded_files[]"]
+    end
+
+    subgraph Frontend["🌐 Frontend State"]
+        FE1["apiConfigured"]
+        FE2["vectorStoreId"]
+        FE3["uploadedFiles"]
+        FE4["messages[]"]
+    end
 ```
 
 ### Data Security & Privacy
